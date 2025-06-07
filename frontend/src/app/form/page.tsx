@@ -24,6 +24,12 @@ const UPDATE_EVENT = gql`
     updateEvent(id: $id, input: $input) {
       id
       title
+      description
+      location
+      isRecurring
+      recurrenceRule
+      startTime
+      endTime
     }
   }
 `;
@@ -49,15 +55,29 @@ export default function AddOrEditEvent() {
   const isEdit = !!eventId;
 
   const [startTime, setStartTime] = useState<Date>(new Date());
-  const [endTime, setEndTime] = useState<Date>(new Date());
+  const [endTime, setEndTime] = useState<Date>(new Date(Date.now() + 60 * 60 * 1000));
 
   const { data: eventData, loading: eventLoading, error: eventError } = useQuery(GET_EVENT, {
     variables: { id: eventId },
     skip: !isEdit,
+    fetchPolicy: 'network-only',
   });
 
   const [addEvent] = useMutation(ADD_EVENT);
   const [updateEvent] = useMutation(UPDATE_EVENT);
+
+  const parseDate = (val: any): Date => {
+    if (!val) {
+      console.warn('No date value provided. Falling back to current date.');
+      return new Date();
+    }
+    const date = new Date(typeof val === 'string' || typeof val === 'number' ? Number(val) : '');
+    if (isNaN(date.getTime())) {
+      console.warn(`Invalid date value: ${val}. Falling back to current date.`);
+      return new Date();
+    }
+    return date;
+  };
 
   const formik = useFormik({
     initialValues: {
@@ -81,10 +101,20 @@ export default function AddOrEditEvent() {
       'end-after-start',
       'End time must be after start time',
       function () {
+        if (!(startTime instanceof Date) || !(endTime instanceof Date) || isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+          return false;
+        }
         return endTime > startTime;
       }
     ),
-    onSubmit: async (values) => {
+    onSubmit: async (values, { resetForm }) => {
+      if (!(startTime instanceof Date) || !(endTime instanceof Date) || isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+        toast.error('Invalid date values provided.', {
+          className: 'bg-red-500 text-white rounded-lg',
+        });
+        return;
+      }
+
       if (endTime <= startTime) {
         toast.error('End time must be after start time.', {
           className: 'bg-red-500 text-white rounded-lg',
@@ -112,7 +142,10 @@ export default function AddOrEditEvent() {
             className: 'bg-green-500 text-white rounded-lg',
           });
         }
-        setTimeout(() => router.push('/'), 1500);
+        resetForm();
+        setStartTime(new Date());
+        setEndTime(new Date(Date.now() + 60 * 60 * 1000));
+        router.push('/')
       } catch (error: any) {
         toast.error(error.message || 'Something went wrong!', {
           className: 'bg-red-500 text-white rounded-lg',
@@ -133,14 +166,10 @@ export default function AddOrEditEvent() {
         recurrenceRule: ev.recurrenceRule || '',
       });
 
-      const parseDate = (val: any) => {
-        if (!val) return new Date();
-        if (typeof val === 'string' || typeof val === 'number') return new Date(val);
-        return new Date();
-      };
-
-      setStartTime(parseDate(ev.startTime));
-      setEndTime(parseDate(ev.endTime));
+      const parsedStartTime = parseDate(ev.startTime);
+      const parsedEndTime = parseDate(ev.endTime);
+      setStartTime(parsedStartTime);
+      setEndTime(parsedEndTime);
     }
   }, [eventData]);
 
@@ -218,7 +247,7 @@ export default function AddOrEditEvent() {
       `}</style>
       <div className="max-w-xl mx-auto bg-white bg-opacity-90 backdrop-blur-lg shadow-xl rounded-2xl p-8">
         <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-8">
-          {isEdit ? '✏️ Edit Event' : '📅 Add Event'}
+          {isEdit ? 'Edit Event' : "Create Event"}
         </h2>
         <form onSubmit={formik.handleSubmit} className="space-y-6" noValidate>
           <div>
@@ -261,7 +290,7 @@ export default function AddOrEditEvent() {
             <label className="block mb-1 font-medium text-gray-800">Start Time</label>
             <div className="relative">
               <DatePicker
-                selected={startTime}
+                selected={startTime instanceof Date && !isNaN(startTime.getTime()) ? startTime : new Date()}
                 onChange={(date) => date && setStartTime(date)}
                 showTimeSelect
                 dateFormat="MMM d, yyyy h:mm aa"
@@ -285,12 +314,12 @@ export default function AddOrEditEvent() {
             <label className="block mb-1 font-medium text-gray-800">End Time</label>
             <div className="relative">
               <DatePicker
-                selected={endTime}
+                selected={endTime instanceof Date && !isNaN(endTime.getTime()) ? endTime : new Date()}
                 onChange={(date) => date && setEndTime(date)}
                 showTimeSelect
                 dateFormat="MMM d, yyyy h:mm aa"
                 className="w-full"
-                minDate={startTime}
+                minDate={startTime instanceof Date && !isNaN(startTime.getTime()) ? startTime : new Date()}
               />
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -318,11 +347,10 @@ export default function AddOrEditEvent() {
             </div>
             {formik.values.isRecurring && (
               <input
-  placeholder="e.g., weekly"
-  className="w-full p-3 bg-white bg-opacity-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-200 placeholder-gray-400"
-  {...formik.getFieldProps('recurrenceRule')}
-/>
-
+                placeholder="e.g., weekly"
+                className="w-full p-3 bg-white bg-opacity-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-200 placeholder-gray-400"
+                {...formik.getFieldProps('recurrenceRule')}
+              />
             )}
             {formik.touched.recurrenceRule && formik.errors.recurrenceRule && (
               <div className="text-red-500 text-sm mt-1">{formik.errors.recurrenceRule}</div>
@@ -331,7 +359,7 @@ export default function AddOrEditEvent() {
 
           <button
             type="submit"
-            className="w-full px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 transition duration-300 transform hover:scale-105"
+            className="w-full px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 transition duration-300 transform hover:scale-105 cursor-pointer"
           >
             {isEdit ? 'Update Event' : 'Create Event'}
           </button>

@@ -241,7 +241,7 @@ export default function Home() {
                     </Link>
                     <button
                       onClick={() => handleDelete(event.id)}
-                      className="px-4 py-2 text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition duration-200 transform hover:scale-105"
+                      className="px-4 py-2 text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition duration-200 transform hover:scale-105 cursor-pointer"
                     >
                       Delete
                     </button>
